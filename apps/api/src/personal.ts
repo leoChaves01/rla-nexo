@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SnapshotSchema,cents,dateOnly,Snapshot,salaryDate } from '@rla-nexo/engine';
+import { SnapshotSchema,cents,dateOnly,Snapshot,salaryOccurrence,salaryParts } from '@rla-nexo/engine';
 export const Revision=z.number().int().min(0);
 export const SectionSchema=z.discriminatedUnion('section',[
  z.object({revision:Revision,section:z.literal('accounts'),value:SnapshotSchema.shape.accounts}).strict(),
@@ -35,7 +35,7 @@ export const SaveSchema=z.object({revision:Revision,snapshot:SnapshotSchema}).st
 export const RecordSchema=z.object({revision:Revision,accountId:z.string().min(1).max(100),
  kind:z.enum(['expense','income']),amountCents:cents.refine(v=>v>0),
  description:z.string().trim().min(1).max(160),date:dateOnly,
- commitmentId:z.string().optional(),incomeId:z.string().optional(),salary:z.boolean().optional(),salaryPartId:z.string().optional()}).strict();
+ commitmentId:z.string().optional(),incomeId:z.string().optional(),salary:z.boolean().optional(),salaryPartId:z.string().optional(),salaryReferenceMonth:z.string().regex(/^\d{4}-\d{2}$/).optional()}).strict();
 export function record(snapshot:Snapshot,input:z.infer<typeof RecordSchema>,today:string):Snapshot{
  if(input.date>today)throw new Error('Para datas futuras, cadastre uma conta a pagar ou uma receita prevista.');
  const account=snapshot.accounts.find(a=>a.id===input.accountId);
@@ -55,13 +55,19 @@ export function record(snapshot:Snapshot,input:z.infer<typeof RecordSchema>,toda
  }
  if(input.salary){
   const salary=snapshot.salary;
-  const part=salary?.parts?salary.parts.find(p=>p.id===input.salaryPartId):salary;
-  if(!salary||!part||(!salary.parts&&input.salaryPartId)||input.kind!=='income'||input.amountCents!==('amountCents' in part?part.amountCents:part.netCents)||input.accountId!==salary.accountId)throw new Error('Selecione a parte correta do salário.');
-  if(part.nextDate>today)throw new Error('Este recebimento ainda está no futuro. Se recebeu antecipado, ajuste a data primeiro.');
-  part.nextDate=salaryDate(part.nextDate,1,part.payday);
-  if(salary.parts)salary.nextDate=salary.parts.map(p=>p.nextDate).sort()[0];
+  const part=salaryParts(snapshot).find(p=>p.id===(input.salaryPartId??'salary'));
+  const referenceMonth=input.salaryReferenceMonth??today.slice(0,7);
+  if(!salary||!part||input.kind!=='income'||input.amountCents!==part.amountCents||input.accountId!==salary.accountId)throw new Error('Selecione a parte correta do salário.');
+  const occurrence=salaryOccurrence(snapshot,part,referenceMonth);
+  if(occurrence.scheduledDate>today)throw new Error('Este recebimento está previsto para '+occurrence.scheduledDate+'. Confirme somente quando o dinheiro entrar.');
+  if(occurrence.status==='RECEIVED')throw new Error('Este recebimento já foi confirmado.');
+  const transactionId=crypto.randomUUID();
+  salary.occurrences=[...(salary.occurrences??[]).filter(o=>!(o.salaryPartId===part.id&&o.referenceMonth===referenceMonth)),{...occurrence,status:'RECEIVED',receivedAt:new Date().toISOString(),transactionId}];
+  snapshot.transactions.unshift({id:transactionId,description:input.description,date:input.date,amountCents:input.amountCents});
+  account.balanceCents+=input.amountCents;
+  return SnapshotSchema.parse(snapshot);
  }
- account.balanceCents+=input.amountCents*(input.kind==='expense'?-1:1);
+  account.balanceCents+=input.amountCents*(input.kind==='expense'?-1:1);
  snapshot.transactions.unshift({id:crypto.randomUUID(),description:input.description,date:input.date,amountCents:input.amountCents*(input.kind==='expense'?-1:1)});
  return SnapshotSchema.parse(snapshot);
 }

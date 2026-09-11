@@ -14,6 +14,8 @@ export const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => {
   const d = new Date(v + 'T00:00:00Z');
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0,10) === v;
 }, 'Data inválida');
+const SalaryPartSchema=z.object({id:z.string().min(1).max(100),name:z.string().trim().min(1).max(100).optional(),amountCents:cents.refine(v=>v>0),payday:z.number().int().min(1).max(31),nextDate:dateOnly.optional()});
+const SalaryOccurrenceSchema=z.object({id:z.string().min(1).max(160),salaryPartId:z.string().min(1).max(100),referenceMonth:z.string().regex(/^\d{4}-\d{2}$/),scheduledDate:dateOnly,amountCents:cents.refine(v=>v>0),status:z.enum(['PENDING','RECEIVED','OVERDUE']),receivedAt:z.string().datetime().optional(),transactionId:z.string().min(1).max(100).optional()}).superRefine((o,ctx)=>{if(o.status==='RECEIVED'&&(!o.receivedAt||!o.transactionId))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Recebimento confirmado precisa de data e transação.'});});
 export const SnapshotSchema = z.object({
   asOf: dateOnly,
   syncedAt: z.string().datetime(),
@@ -23,7 +25,7 @@ export const SnapshotSchema = z.object({
   incomes: z.array(z.object({id:z.string(),name:z.string(),date:dateOnly,amountCents:cents,confirmed:z.boolean()})).max(1000),
   goals: z.array(z.object({id:z.string(),name:z.string(),reservedCents:cents})).max(100),
   bufferCents:cents,
-  salary:z.object({netCents:cents.refine(v=>v>0),nextDate:dateOnly,payday:z.number().int().min(1).max(31),accountId:z.string(),confirmed:z.boolean(),parts:z.array(z.object({id:z.string().min(1).max(100),amountCents:cents.refine(v=>v>0),nextDate:dateOnly,payday:z.number().int().min(1).max(31)})).min(1).max(12).optional()}).superRefine((s,ctx)=>{
+  salary:z.object({netCents:cents.refine(v=>v>0),nextDate:dateOnly.optional(),payday:z.number().int().min(1).max(31).optional(),accountId:z.string(),confirmed:z.boolean().optional(),active:z.boolean().optional(),parts:z.array(SalaryPartSchema).min(1).max(12).optional(),occurrences:z.array(SalaryOccurrenceSchema).max(2000).default([])}).superRefine((s,ctx)=>{
     if(s.parts&&(new Set(s.parts.map(p=>p.id)).size!==s.parts.length||s.parts.reduce((n,p)=>n+p.amountCents,0)!==s.netCents))ctx.addIssue({code:z.ZodIssueCode.custom,message:'As partes do salário devem ter identificadores únicos e somar o total mensal.'});
   }).nullable().optional()
 });
@@ -47,15 +49,33 @@ export function salaryDate(anchor:string,months:number,payday:number){
  const day=Math.min(payday,new Date(Date.UTC(y,m+months,0)).getUTCDate());
  return new Date(Date.UTC(y,m-1+months,day)).toISOString().slice(0,10);
 }
-export function salaryEvents(s:Snapshot,endDate:string){
- if(!s.salary?.confirmed)return [];
- const events:{date:string;amountCents:number}[]=[];
- for(const part of s.salary.parts??[{nextDate:s.salary.nextDate,payday:s.salary.payday,amountCents:s.salary.netCents}])for(let n=0;n<36;n++){
-  const date=n===0?part.nextDate:salaryDate(part.nextDate,n,part.payday);
-  if(date>endDate)break;
-  if(date>=s.asOf)events.push({date,amountCents:part.amountCents});
+export type SalaryPart={id:string;name?:string;amountCents:number;payday:number;nextDate?:string};
+export type SalaryOccurrence={id:string;salaryPartId:string;referenceMonth:string;scheduledDate:string;amountCents:number;status:'PENDING'|'RECEIVED'|'OVERDUE';receivedAt?:string;transactionId?:string};
+export function salaryActive(s:Snapshot){return !!s.salary&&(s.salary.active??s.salary.confirmed??true);}
+export function salaryParts(s:Snapshot):SalaryPart[]{
+ if(!s.salary)return [];
+ return s.salary.parts??[{id:'salary',name:'Salário',amountCents:s.salary.netCents,payday:s.salary.payday??Number((s.salary.nextDate??s.asOf).slice(-2)),nextDate:s.salary.nextDate}];
+}
+export function salaryScheduleDate(referenceMonth:string,payday:number){
+ const [year,month]=referenceMonth.split('-').map(Number);const last=new Date(Date.UTC(year,month,0)).getUTCDate();return `${referenceMonth}-${String(Math.min(payday,last)).padStart(2,'0')}`;
+}
+export function salaryOccurrence(s:Snapshot,part:SalaryPart,referenceMonth:string):SalaryOccurrence{
+ const scheduledDate=salaryScheduleDate(referenceMonth,part.payday);
+ const saved=s.salary?.occurrences?.find(o=>o.salaryPartId===part.id&&o.referenceMonth===referenceMonth);
+ if(saved)return saved;
+ return {id:`salary:${part.id}:${referenceMonth}`,salaryPartId:part.id,referenceMonth,scheduledDate,amountCents:part.amountCents,status:scheduledDate<s.asOf?'OVERDUE':'PENDING'};
+}
+export function salaryOccurrences(s:Snapshot,startDate:string,endDate:string):SalaryOccurrence[]{
+ if(!salaryActive(s)||!s.salary)return [];
+ const startMonth=startDate.slice(0,7),endMonth=endDate.slice(0,7),result:SalaryOccurrence[]=[];
+ for(const part of salaryParts(s))for(let month=startMonth;month<=endMonth;month=addMonths(month+'-01',1).slice(0,7)){
+   const occurrence=salaryOccurrence(s,part,month);
+   if(occurrence.scheduledDate>=startDate&&occurrence.scheduledDate<=endDate)result.push(occurrence);
  }
- return events;
+ return result.sort((a,b)=>a.scheduledDate.localeCompare(b.scheduledDate)||a.salaryPartId.localeCompare(b.salaryPartId));
+}
+export function salaryEvents(s:Snapshot,endDate:string){
+ return salaryOccurrences(s,s.asOf,endDate).filter(o=>o.status!=='RECEIVED').map(o=>({date:o.scheduledDate,amountCents:o.amountCents}));
 }
 export function project(input:Snapshot,endDate=addDays(input.asOf,30),extra:{date:string;amountCents:number}[]=[]) {
   const s = SnapshotSchema.parse(input); dateOnly.parse(endDate);
@@ -116,7 +136,8 @@ export function alerts(s:Snapshot,now=new Date()) {
   const p=project(s);
   const result:{id:string;level:string;message:string}[]=[];
   if(s.accounts.length===0)result.push({id:'onboarding',level:'info',message:'Cadastre sua conta e seu salário em Meus dados para começar.'});
-  if(s.salary && (s.salary.parts??[s.salary]).some(p=>p.nextDate<s.asOf))result.push({id:'salary-overdue',level:'warning',message:'Um recebimento do salário ainda não foi registrado. Confirme a entrada ou atualize a próxima data.'});
+  const currentSalary=salaryOccurrences(s,`${s.asOf.slice(0,7)}-01`,s.asOf).filter(o=>o.status==='OVERDUE');
+  if(currentSalary.length)result.push({id:'salary-overdue',level:'warning',message:currentSalary.length===1?'Um recebimento do salário aguarda confirmação.':'Há recebimentos do salário aguardando confirmação.'});
   if(now.getTime()-new Date(s.syncedAt).getTime()>86400000)
     result.push({id:'stale',level:'warning',message:'Dados sem atualização há mais de 24 horas. Sincronize antes de decidir.'});
   if(p.minCashCents<0) result.push({id:'cash-risk',level:'danger',message:'Projeção de caixa negativo em '+p.minDate+'. Revise os compromissos.'});

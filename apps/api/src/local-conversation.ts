@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {Snapshot,assess,simulate,ScenarioSchema,cents,brl,parseBrlCents} from '@rla-nexo/engine';
+import {Snapshot,assess,simulate,ScenarioSchema,cents,brl,parseBrlCents,salaryOccurrences} from '@rla-nexo/engine';
 import {explainBalance} from './explanation';
 import {localIntent} from './interpreter';
 const object=(properties:Record<string,unknown>)=>({type:'object',properties,required:Object.keys(properties),additionalProperties:false});
@@ -9,6 +9,11 @@ const tools=[
 ];
 export async function converseLocal(message:string,snapshot:Snapshot,history:{role:string;text:string}[],request:typeof fetch=fetch){
  const intent=localIntent(message);
+ const normalized=message.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+ const salary=salaryOccurrences(snapshot,snapshot.asOf.slice(0,7)+'-01',snapshot.asOf.slice(0,7)+'-31');
+ if(/quanto.*(?:falta|resta).*receber/.test(normalized))return {mode:'ollama',reply:'Ainda falta confirmar '+brl(salary.filter(o=>o.status!=='RECEIVED').reduce((n,o)=>n+o.amountCents,0))+' de salário neste mês.'};
+ if(/quando.*receb|recebo.*novo|proximo.*salario/.test(normalized)){const next=salary.filter(o=>o.scheduledDate>=snapshot.asOf&&o.status!=='RECEIVED')[0];return {mode:'ollama',reply:next?'O próximo recebimento previsto é '+brl(next.amountCents)+' em '+next.scheduledDate+'.':'Não há uma renda recorrente ativa prevista.'};}
+ if(/(?:ja )?recebi.*salario|recebi.*parte|caiu.*hoje/.test(normalized))return {mode:'ollama',reply:'Para atualizar o saldo com segurança, confirme a parte correspondente em Meus dados → Meu salário. O Nexo impede confirmar a mesma ocorrência duas vezes.'};
  if(intent.action==='balance')return {mode:'ollama',...explainBalance(snapshot)};
  if(intent.action==='spend'){
   const a=assess(snapshot,intent.amountCents!);
