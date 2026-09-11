@@ -1,0 +1,28 @@
+{
+  "name": "rla-nexo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "build:engine": "npm run build -w @rla-nexo/engine",
+    "test": "npm run build:engine && npm run build -w @rla-nexo/api && node --test tests/*.test.cjs",
+    "build": "npm run build:engine && npm run build -w @rla-nexo/api && npm run build -w @rla-nexo/web",
+    "dev:api": "npm run build:engine && npm run dev -w @rla-nexo/api",
+    "dev:web": "npm run dev -w @rla-nexo/web",
+    "build:cloud": "npm run build:engine && npm run build -w @rla-nexo/api && npm run build -w @rla-nexo/web"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@types/node": "^22.0.0"
+  },
+  "overrides": {
+    "postcss": "^8.5.23",
+    "multer": "^2.3.0"
+  }
+}

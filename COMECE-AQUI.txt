@@ -1,0 +1,5 @@
+RLA Nexo online
+
+Leia COLOCAR-ONLINE.md.
+
+Este pacote requer configuração das suas contas gratuitas Supabase, Groq e Vercel. Não contém suas chaves nem dados pessoais. Não foi publicado automaticamente.
