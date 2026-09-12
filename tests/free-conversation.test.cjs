@@ -14,3 +14,15 @@ test('cloud: interpretação usa reais, não envia cadastros e quota tem fallbac
  const invalid=await freeConversation('me ajude',s,[],async()=>new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:'{}'}}]})));assert.equal(invalid.mode,'guided');
  }finally{if(key===undefined)delete process.env.GROQ_API_KEY;else process.env.GROQ_API_KEY=key;if(enabled===undefined)delete process.env.FREE_AI_ENABLED;else process.env.FREE_AI_ENABLED=enabled;}
 });
+test('cloud: responde perguntas conceituais sem pedir um valor de gasto',async()=>{
+ const s=demoSnapshot('2026-09-11');
+ const direct=await freeConversation('o que seria os compromissos',s,[],async()=>{throw new Error('não deve chamar a rede')});
+ assert.match(direct.reply,/contas, faturas e parcelas/i);
+ const key=process.env.GROQ_API_KEY,enabled=process.env.FREE_AI_ENABLED;process.env.GROQ_API_KEY='fake-test';process.env.FREE_AI_ENABLED='true';
+ try{
+  const explained=await freeConversation('por que é importante ter uma reserva?',s,[],async()=>new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify({action:'explain',value:null,date:null,months:null,kind:null,reply:'Uma reserva ajuda a absorver imprevistos sem comprometer as contas já planejadas.'})}}]})));
+  assert.equal(explained.mode,'groq');assert.match(explained.reply,/imprevistos/);
+  const clarified=await freeConversation('quero simular uma compra',s,[],async()=>new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify({action:'clarify',value:null,date:null,months:null,kind:'expense',reply:'Qual é o valor e em que data você pretende comprar?'})}}]})));
+  assert.match(clarified.reply,/Qual é o valor/);
+ }finally{if(key===undefined)delete process.env.GROQ_API_KEY;else process.env.GROQ_API_KEY=key;if(enabled===undefined)delete process.env.FREE_AI_ENABLED;else process.env.FREE_AI_ENABLED=enabled;}
+});

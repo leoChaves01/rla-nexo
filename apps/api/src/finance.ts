@@ -20,7 +20,7 @@ export class FinanceCore implements OnModuleInit,OnModuleDestroy{
  async current(){const state=await this.repo.read();state.snapshot.asOf=today();return state;}
  async refreshAlerts(){return alerts((await this.current()).snapshot);}
  async dashboard(){const state=await this.current();return {...state,projection:project(state.snapshot),alerts:alerts(state.snapshot),
-  provider:'manual',storage:this.repo.storage,demo:false,conversationMode:this.cloud?(process.env.FREE_AI_ENABLED==='true'&&process.env.GROQ_API_KEY?'groq':'local'):process.env.AI_PROVIDER==='ollama'?'ollama':process.env.OPENAI_API_KEY?'openai':'local'};}
+  provider:'manual',storage:this.repo.storage,demo:false,conversationMode:this.cloud?(process.env.FREE_AI_ENABLED==='true'&&(process.env.GEMINI_API_KEY||process.env.GROQ_API_KEY)?process.env.GEMINI_API_KEY?'gemini':'groq':'local'):process.env.AI_PROVIDER==='ollama'?'ollama':process.env.OPENAI_API_KEY?'openai':'local'};}
  async save(body:unknown){
   const parsed=SaveSchema.safeParse(body);
   if(!parsed.success)throw new BadRequestException(parsed.error.issues.map(i=>i.message).slice(0,3).join('. '));
