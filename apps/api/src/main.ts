@@ -23,6 +23,8 @@ class ApiController{
  @Post('personal/record')record(@Body()b:unknown){return this.finance.record(b);}
  @Get('personal/backup')backup(){return this.finance.backup();}
  @Get('conversation/history')history(){return this.finance.history();}
+ @Get('preferences')preferences(){return this.finance.getPreferences();}
+ @Post('preferences')savePreferences(@Body()b:unknown){return this.finance.savePreferences(b);}
  @Post('conversation')chat(@Body()b:unknown){return this.finance.chat(b);}
  @Post('scenarios')scenario(@Body()b:unknown){return this.finance.scenario(b);}
  @Get('alerts')alerts(){return this.finance.refreshAlerts();}

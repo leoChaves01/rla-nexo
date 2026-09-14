@@ -114,7 +114,8 @@ export function assess(s:Snapshot,amountCents:number) {
     ?'Esse gasto cabe na projeção. Contas, reservas das metas e margem de segurança continuam cobertas.'
     :status==='bills_at_risk'?'Esse gasto deixa o caixa negativo antes do fim do período e pode comprometer contas.'
     :'As contas ficam cobertas, mas o gasto utiliza valores protegidos para metas ou margem de segurança.';
-  return {status,amountCents,limitCents,before,after,explanation,
+  const requestedPercentOfFree=before.freeCents>0?Math.round(amountCents*10000/before.freeCents)/100:null;
+  return {status,amountCents,limitCents,before,after,requestedPercentOfFree,explanation,
     alternatives:status==='safe'?[]:[
       limitCents>0?'Reduza o gasto para até '+brl(limitCents)+'.':'Adie o gasto até existir dinheiro livre.',
       'Simule outra data; uma entrada futura só ajuda depois de recebida.'

@@ -11,7 +11,8 @@ import { converse } from './conversation';
 import { converseLocal } from './local-conversation';
 import { explainBalance } from './explanation';
 import {freeConversation} from './free-conversation';
-export type FinanceRepository=Pick<Repository,'read'|'update'|'history'|'remember'> & {storage:string};
+import {AssistantPreferences,DEFAULT_PREFERENCES,PreferencesSchema,normalizePreferences} from './personality';
+export type FinanceRepository=Pick<Repository,'read'|'update'|'history'|'remember'> & {storage:string;preferences?:()=>Promise<AssistantPreferences>;savePreferences?:(value:AssistantPreferences)=>Promise<AssistantPreferences>};
 export class FinanceCore implements OnModuleInit,OnModuleDestroy{
  private timer?:NodeJS.Timeout;
  constructor(private readonly repo:FinanceRepository, private readonly cloud=false){}
@@ -19,7 +20,9 @@ export class FinanceCore implements OnModuleInit,OnModuleDestroy{
  onModuleDestroy(){if(this.timer)clearInterval(this.timer);}
  async current(){const state=await this.repo.read();state.snapshot.asOf=today();return state;}
  async refreshAlerts(){return alerts((await this.current()).snapshot);}
- async dashboard(){const state=await this.current();return {...state,projection:project(state.snapshot),alerts:alerts(state.snapshot),
+ async getPreferences(){return this.repo.preferences?normalizePreferences(await this.repo.preferences()):DEFAULT_PREFERENCES;}
+ async savePreferences(body:unknown){const parsed=PreferencesSchema.safeParse(body);if(!parsed.success)throw new BadRequestException('Personalização inválida.');if(!this.repo.savePreferences)throw new ServiceUnavailableException('A personalização não está disponível.');return this.repo.savePreferences(parsed.data);}
+ async dashboard(){const state=await this.current();return {...state,projection:project(state.snapshot),alerts:alerts(state.snapshot),preferences:await this.getPreferences(),
   provider:'manual',storage:this.repo.storage,demo:false,conversationMode:this.cloud?(process.env.FREE_AI_ENABLED==='true'&&(process.env.GEMINI_API_KEY||process.env.GROQ_API_KEY)?process.env.GEMINI_API_KEY?'gemini':'groq':'local'):process.env.AI_PROVIDER==='ollama'?'ollama':process.env.OPENAI_API_KEY?'openai':'local'};}
  async save(body:unknown){
   const parsed=SaveSchema.safeParse(body);
@@ -51,9 +54,9 @@ export class FinanceCore implements OnModuleInit,OnModuleDestroy{
  async chat(body:unknown){
   const parsed=z.object({message:z.string().trim().min(1).max(2000)}).strict().safeParse(body);
   if(!parsed.success)throw new BadRequestException('Envie uma mensagem de até 2.000 caracteres.');
-  if(this.cloud){const response=await freeConversation(parsed.data.message,(await this.current()).snapshot,await this.repo.history());await this.repo.remember(parsed.data.message,response.reply);return response;}
+  if(this.cloud){const response=await freeConversation(parsed.data.message,(await this.current()).snapshot,await this.repo.history(),fetch,await this.getPreferences());await this.repo.remember(parsed.data.message,response.reply);return response;}
   if(process.env.AI_PROVIDER==='ollama'||process.env.OPENAI_API_KEY){
-   try{const response=await (process.env.AI_PROVIDER==='ollama'?converseLocal:converse)(parsed.data.message,(await this.current()).snapshot,await this.repo.history());await this.repo.remember(parsed.data.message,response.reply);return response;}
+   try{const response=await (process.env.AI_PROVIDER==='ollama'?converseLocal:converse)(parsed.data.message,(await this.current()).snapshot,await this.repo.history(),fetch,await this.getPreferences());await this.repo.remember(parsed.data.message,response.reply);return response;}
    catch(e){throw new ServiceUnavailableException((e as Error).message||'A IA está indisponível.');}
   }
   let interpretation;

@@ -5,7 +5,7 @@ export const runtime='nodejs';
 export const dynamic='force-dynamic';
 export const maxDuration=60;
 import { NextRequest,NextResponse } from 'next/server';
-const allowed=new Set(['dashboard','alerts','conversation','conversation/history','scenarios','personal/save','personal/section','personal/record','personal/backup','open-finance/sync']);
+const allowed=new Set(['dashboard','alerts','conversation','conversation/history','preferences','scenarios','personal/save','personal/section','personal/record','personal/backup','open-finance/sync']);
 async function proxy(req:NextRequest,context:{params:Promise<{path:string[]}>}){
   const path=(await context.params).path.join('/');
   if(!allowed.has(path))return NextResponse.json({message:'Não encontrado'},{status:404});
@@ -22,11 +22,13 @@ async function proxy(req:NextRequest,context:{params:Promise<{path:string[]}>}){
      if(path==='dashboard')return json(await finance.dashboard());
      if(path==='alerts')return json(await finance.refreshAlerts());
      if(path==='conversation/history')return json(await finance.history());
+     if(path==='preferences')return json(await finance.getPreferences());
      if(path==='personal/backup')return json(await finance.backup());
     }else{
      if(path==='personal/save')return json(await finance.save(body));
      if(path==='personal/section')return json(await finance.section(body));
      if(path==='personal/record')return json(await finance.record(body));
+     if(path==='preferences')return json(await finance.savePreferences(body));
      if(path==='scenarios')return json(await finance.scenario(body));
      if(path==='conversation'){
       if(typeof body?.message==='string'&&localIntent(body.message).action==='clarify'&&!await repo.allowChat())return json({message:'Limite de conversa atingido. Aguarde ou use consultas de saldo, gastos simples e o simulador.'},429);

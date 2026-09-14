@@ -7,7 +7,7 @@ export function localIntent(message:string):Intent {
   if(/^(?:(?:pq|porque|por que|por qual motivo)\s+(?:o\s+)?(?:meu\s+)?(?:saldo|dinheiro livre|caixa|menor caixa|projecao)\s+(?:ta|esta|ficou|fica|e)\s+(?:negativo|negativa|no vermelho)|(?:explique|explica|me explique|me explica)\s+(?:o\s+)?(?:meu\s+)?(?:saldo|dinheiro livre|caixa|projecao)|(?:qual|quanto)\s+(?:e\s+)?(?:o\s+)?(?:meu\s+)?(?:saldo|dinheiro livre))[?!. ]*$/.test(normalized))return {action:'balance',amountCents:null};
   if(/^(saldo|resumo|dinheiro livre)[?!. ]*$/i.test(message.trim())) return {action:'balance',amountCents:null};
   // Gramática estreita em modo local: nunca adivinha parcelas, negações ou múltiplos valores.
-  const m=message.trim().match(/^(?:quero gastar|posso gastar|gastar)\s+(?:R\$\s*)?(\d+(?:\.\d{3})*(?:,\d{1,2})?)\s*[?!.]?$/i);
+  const m=message.trim().match(/^(?:quero gastar|posso gastar|gastar)\s+(?:R\$\s*)?(\d+(?:\.\d{3})*(?:,\d{1,2})?)(?:\s+hoje)?\s*[?!.]?$/i);
   if(!m) return {action:'clarify',amountCents:null};
   const [whole,fraction='']=m[1].replace(/\./g,'').split(',');
   const amountCents=Number(whole)*100+Number(fraction.padEnd(2,'0'));

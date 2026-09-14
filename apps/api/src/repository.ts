@@ -1,6 +1,7 @@
 import { Injectable,OnModuleInit,OnModuleDestroy,ConflictException } from '@nestjs/common';
 import { Pool } from 'pg';
 import { Snapshot,SnapshotSchema } from '@rla-nexo/engine';
+import {AssistantPreferences,DEFAULT_PREFERENCES,normalizePreferences} from './personality';
 export function today(){return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
 export function emptySnapshot():Snapshot{return {asOf:today(),syncedAt:new Date().toISOString(),accounts:[],transactions:[],commitments:[],incomes:[],goals:[],bufferCents:0};}
 export type State={snapshot:Snapshot;revision:number;consent:string};
@@ -22,6 +23,8 @@ export class Repository implements OnModuleInit,OnModuleDestroy {
    id BIGSERIAL PRIMARY KEY,user_id TEXT NOT NULL,role TEXT NOT NULL,content TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
   await this.pool.query(`CREATE TABLE IF NOT EXISTS financial_revisions (
    id BIGSERIAL PRIMARY KEY,user_id TEXT NOT NULL,revision INTEGER NOT NULL,snapshot JSONB NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
+  await this.pool.query(`CREATE TABLE IF NOT EXISTS user_preferences (
+   user_id TEXT PRIMARY KEY,nexo_personality TEXT NOT NULL DEFAULT 'friendly',response_length TEXT NOT NULL DEFAULT 'standard',use_emojis BOOLEAN NOT NULL DEFAULT false,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
  }
  async read():Promise<State>{
   const {rows}=await this.pool.query('SELECT snapshot,revision,consent FROM financial_state WHERE user_id=$1',['personal']);
@@ -48,6 +51,7 @@ export class Repository implements OnModuleInit,OnModuleDestroy {
  async remember(message:string,reply:string){
   await this.pool.query('INSERT INTO conversation_history(user_id,role,content) VALUES ($1,$2,$3),($1,$4,$5)',['personal','user',message,'assistant',reply]);
  }
+ async preferences():Promise<AssistantPreferences>{const {rows}=await this.pool.query('SELECT nexo_personality,response_length,use_emojis FROM user_preferences WHERE user_id=$1',['personal']);return rows[0]?normalizePreferences({nexoPersonality:rows[0].nexo_personality,responseLength:rows[0].response_length,useEmojis:rows[0].use_emojis}):DEFAULT_PREFERENCES;}
+ async savePreferences(value:AssistantPreferences){await this.pool.query(`INSERT INTO user_preferences(user_id,nexo_personality,response_length,use_emojis) VALUES($1,$2,$3,$4) ON CONFLICT(user_id) DO UPDATE SET nexo_personality=excluded.nexo_personality,response_length=excluded.response_length,use_emojis=excluded.use_emojis,updated_at=now()`,['personal',value.nexoPersonality,value.responseLength,value.useEmojis]);return value;}
  async onModuleDestroy(){await this.pool.end();}
 }
-

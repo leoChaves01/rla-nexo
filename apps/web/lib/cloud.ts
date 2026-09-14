@@ -2,6 +2,7 @@ import {createClient, SupabaseClient} from '@supabase/supabase-js';
 import {Snapshot,SnapshotSchema} from '@rla-nexo/engine';
 import {ConflictException,ServiceUnavailableException} from '@nestjs/common';
 import {emptySnapshot,today} from '../../api/dist/repository';
+import {AssistantPreferences,DEFAULT_PREFERENCES,normalizePreferences} from '../../api/dist/personality';
 export const isCloud=()=>process.env.NEXO_CLOUD==='true'||process.env.VERCEL==='1';
 export function publicConfig(){
  const cloud=isCloud();let key=process.env.SUPABASE_ANON_KEY||'';
@@ -31,4 +32,6 @@ export class CloudRepository {
  async history(){const {data,error}=await this.client.from('nexo_messages').select('role,text,created_at').order('id',{ascending:false}).limit(100);if(error)throw new ServiceUnavailableException('Não foi possível carregar a conversa.');return (data||[]).reverse().map(m=>({role:m.role,text:m.text,date:m.created_at}));}
  async remember(message:string,reply:string){const {error}=await this.client.rpc('nexo_remember',{user_text:message,assistant_text:reply});if(error)throw new ServiceUnavailableException('Não foi possível salvar a conversa.');}
  async allowChat(){const {data,error}=await this.client.rpc('nexo_chat_allow');return !error&&data===true;}
+ async preferences():Promise<AssistantPreferences>{const {data,error}=await this.client.rpc('nexo_preferences_read');if(error)throw new ServiceUnavailableException('Não foi possível carregar a personalização.');return data?normalizePreferences({nexoPersonality:data.nexo_personality,responseLength:data.response_length,useEmojis:data.use_emojis}):DEFAULT_PREFERENCES;}
+ async savePreferences(value:AssistantPreferences){const {error}=await this.client.rpc('nexo_preferences_save',{personality:value.nexoPersonality,response_length:value.responseLength,use_emojis:value.useEmojis});if(error)throw new ServiceUnavailableException('Não foi possível salvar a personalização.');return value;}
 }

@@ -2,10 +2,11 @@
 import {apiFetch} from '../lib/client';
 import {useEffect,useState,useRef,FormEvent} from 'react';
 import Personal from './Personal';
+import PersonalitySettings,{UiPreferences} from './PersonalitySettings';
 import type {Snapshot} from '@rla-nexo/engine';
 import {parseBrlCents,salaryOccurrence,salaryParts} from '@rla-nexo/engine';
 type Projection={balanceCents:number;freeCents:number;reservedCents:number;bufferCents:number;commitmentsCents:number;minCashCents:number;endDate:string;timeline:{date:string;balanceCents:number;freeCents:number}[]};
-type Dashboard={revision:number;storage:string;projection:Projection;consent:string;conversationMode:string;snapshot:Snapshot;alerts:{id:string;level:string;message:string}[]};
+type Dashboard={revision:number;storage:string;projection:Projection;consent:string;conversationMode:string;preferences:UiPreferences;snapshot:Snapshot;alerts:{id:string;level:string;message:string}[]};
 type Message={role:string;text:string;alternatives?:string[]};
 type Simulation={status:string;totalCents:number;baseline:Projection;result:Projection;assumptions:string[]};
 const money=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
@@ -33,6 +34,7 @@ export default function Home(){
    try{if(active!==undefined)await api('open-finance/consent',{active});else await api('open-finance/sync',{});await refresh();}
    catch(e){setError((e as Error).message);}finally{setSyncing(false);}
  }
+ async function savePreferences(value:UiPreferences){const saved=await api('preferences',value);setData(current=>current?{...current,preferences:saved}:current);}
  async function runScenario(e:FormEvent){
    e.preventDefault();setScenarioBusy(true);setError('');setScenario(null);
    const value=parseBrlCents(amount);
@@ -43,15 +45,16 @@ export default function Home(){
  const p=data?.projection;
  return <div className="shell">
   <aside className="sidebar"><a href="/" className="brand"><span className="mascot-avatar brand-avatar"><img src="/nexo-mascote.png" alt="Mascote Nexo"/></span><span>RLA <b>nexo</b></span></a><div className="workspace-label">SEU ESPAÇO FINANCEIRO</div>
-  <nav>{['Visão geral','Meus dados','E se?','Contas e metas','Conexões'].map((item,i)=><button key={item} onClick={()=>setTab(item)} className={tab===item?'nav active':'nav'}><span>{['◫','✎','↗','◎','⇄'][i]}</span>{item}</button>)}</nav>
+  <nav>{['Visão geral','Meus dados','E se?','Contas e metas','Conexões','Configurações'].map((item,i)=><button key={item} onClick={()=>setTab(item)} className={tab===item?'nav active':'nav'}><span>{['◫','✎','↗','◎','⇄','⚙'][i]}</span>{item}</button>)}</nav>
   <div className="sidebar-bottom"><span className="online-dot"/> Memória ativa<p>Seus dados ficam salvos no banco de dados conectado.</p><div className="profile"><span>U</span><div>Minha conta<small>Perfil pessoal</small></div></div></div></aside>
   <main><header><div className="breadcrumb">Meu espaço <span>/</span> {tab}</div><span className="demo-label">USO PESSOAL</span></header>
-  <div className="page-heading"><div><p className="eyebrow">RLA NEXO · FINANÇAS PESSOAIS</p><h1>{tab==='Visão geral'?'Mais clareza. Melhores decisões.':tab==='E se?'?'Explore seu próximo passo.':tab==='Conexões'?'Suas contas, conectadas.':'O que você quer proteger.'}</h1><p>{tab==='Visão geral'?'Entenda o que está livre antes de decidir o que vem depois.':tab==='E se?'?'Veja como uma escolha muda a sua projeção financeira.':tab==='Conexões'?'Gerencie de onde vêm seus dados financeiros.':'Compromissos e reservas que fazem parte do seu plano.'}</p></div><button className="secondary" disabled={syncing} onClick={()=>void refresh()}>↻ Recarregar</button></div>
+  <div className="page-heading"><div><p className="eyebrow">RLA NEXO · FINANÇAS PESSOAIS</p><h1>{tab==='Visão geral'?'Mais clareza. Melhores decisões.':tab==='E se?'?'Explore seu próximo passo.':tab==='Conexões'?'Suas contas, conectadas.':tab==='Configurações'?'Seu Nexo, do seu jeito.':'O que você quer proteger.'}</h1><p>{tab==='Visão geral'?'Entenda o que está livre antes de decidir o que vem depois.':tab==='E se?'?'Veja como uma escolha muda a sua projeção financeira.':tab==='Conexões'?'Gerencie de onde vêm seus dados financeiros.':tab==='Configurações'?'Escolha como o assistente conversa com você.':'Compromissos e reservas que fazem parte do seu plano.'}</p></div><button className="secondary" disabled={syncing} onClick={()=>void refresh()}>↻ Recarregar</button></div>
   {error&&<div className="error" role="alert">{error}<button onClick={()=>void refresh()}>Tentar novamente</button></div>}
   {!data&&!error&&<p role="status">Preparando seu espaço financeiro…</p>}
   {data&&p&&<>
   {data.snapshot.accounts.length===0&&tab!=='Meus dados'&&<div className="onboarding-banner"><div><h2>Vamos começar pelos seus números?</h2><p>Cadastre seu saldo, salário e compromissos. Tudo fica salvo ao sair.</p></div><button className="primary" onClick={()=>setTab('Meus dados')}>Cadastrar meus dados</button></div>}
   {tab==='Meus dados'&&<Personal initial={data} onSaved={()=>void refresh()}/>}
+  {tab==='Configurações'&&<PersonalitySettings initial={data.preferences} onSave={savePreferences}/>}
   {tab==='Visão geral'&&<><div className="overview-grid"><section className="free-card"><div className="card-top"><span>Dinheiro livre</span><span className="light-pill">Próximos 30 dias</span></div><div className="big-number">{money(p.freeCents)}</div><p>Após proteger suas contas, metas e margem.</p><div className="free-footer"><span>◎ Caixa mínimo projetado</span><strong>{money(p.minCashCents)}</strong></div></section>
   <section className="metric"><span className="metric-icon">↙</span><p>Saldo em contas</p><h2>{money(p.balanceCents)}</h2><span>Em {data.snapshot.accounts.length} contas cadastradas</span></section>
   <section className="metric"><span className="metric-icon">◷</span><p>Compromissos</p><h2>{money(p.commitmentsCents)}</h2><span>Até {date(p.endDate)}</span></section></div>
