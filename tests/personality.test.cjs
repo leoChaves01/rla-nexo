@@ -64,9 +64,9 @@ test('tool calling usa o motor e injeta a personalidade atual',async()=>{
   const bodies=[];
   const request=async(_url,options)=>{const body=JSON.parse(options.body);bodies.push(body);const interpreting=Boolean(body.response_format);return new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:interpreting?JSON.stringify({action:'spend',value:'50,00',date:null,months:null,kind:null}):'Eu evitaria esse gasto agora.'}}]}));};
   const r=await freeConversation('posso comprar um item de cinquenta reais hoje?',demoSnapshot('2026-09-11'),[{role:'user',text:'estávamos falando de um tênis'}],request,pref('direct'));
-  assert.equal(r.assessment.amountCents,5000);assert.equal(bodies.length,2);
-  assert.match(bodies[1].messages[0].content,/PERSONALIDADE ATUAL: DIRECT/);
-  assert.match(bodies[1].messages.at(-1).content,/Resultado imutável do Financial Engine/);
+  assert.equal(r.assessment.amountCents,5000);assert.equal(bodies.length,1);
+  assert.match(bodies[0].messages[0].content,/PERSONALIDADE ATUAL: DIRECT/);
+  assert.equal(r.personality,'direct');
   assert.ok(bodies[0].messages.some(m=>m.content==='estávamos falando de um tênis'));
  }finally{old.enabled===undefined?delete process.env.FREE_AI_ENABLED:process.env.FREE_AI_ENABLED=old.enabled;old.key===undefined?delete process.env.GROQ_API_KEY:process.env.GROQ_API_KEY=old.key;}
 });
@@ -118,4 +118,16 @@ test('JSON do motor nunca aparece como resposta ao usuário',async()=>{
   assert.doesNotMatch(response.reply,/spend_assessment|freeMoneyBefore|\{/);
   assert.equal(response.assessment.amountCents,10000);
  } finally {previous===undefined?delete process.env.FREE_AI_ENABLED:process.env.FREE_AI_ENABLED=previous;key===undefined?delete process.env.GROQ_API_KEY:process.env.GROQ_API_KEY=key;}
+});
+
+test('provedor não pode substituir o estilo escolhido numa avaliação de gasto',async()=>{
+ const old=process.env.FREE_AI_ENABLED;process.env.FREE_AI_ENABLED='true';
+ try {
+  const replies=new Set();const snapshot=demoSnapshot('2026-09-11');let calls=0;
+  for(const name of ['friendly','direct','calm','analytical','adaptive']){
+   const r=await freeConversation('Quero gastar 100',snapshot,[],async()=>{calls++;throw Error('não deveria reescrever');},pref(name));
+   assert.equal(r.personality,name);assert.deepEqual(r.assessment,assess(snapshot,10000));replies.add(r.reply);
+  }
+  assert.equal(calls,0);assert.equal(replies.size,5);
+ }finally{old===undefined?delete process.env.FREE_AI_ENABLED:process.env.FREE_AI_ENABLED=old;}
 });
