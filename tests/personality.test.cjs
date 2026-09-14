@@ -106,3 +106,16 @@ test('interface oferece cards, prévia e os cinco modos',()=>{
 test('prompts de todos os modos reafirmam somente estilo',()=>{
  for(const personality of ['friendly','direct','calm','analytical','adaptive'])assert.match(personalityPrompt(pref(personality)),new RegExp('PERSONALIDADE ATUAL: '+personality.toUpperCase()));
 });
+
+test('JSON do motor nunca aparece como resposta ao usuário',async()=>{
+ const previous=process.env.FREE_AI_ENABLED, key=process.env.GROQ_API_KEY;
+ process.env.FREE_AI_ENABLED='true';process.env.GROQ_API_KEY='test';
+ try {
+  const snapshot=demoSnapshot('2026-09-11');
+  const payload=JSON.stringify({type:'spend_assessment',risk:'bills_at_risk',freeMoneyBefore:'R$ 680,00'});
+  const request=async()=>new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:payload}}]}));
+  const response=await freeConversation('Quero gastar 100',snapshot,[],request,pref('friendly'));
+  assert.doesNotMatch(response.reply,/spend_assessment|freeMoneyBefore|\{/);
+  assert.equal(response.assessment.amountCents,10000);
+ } finally {previous===undefined?delete process.env.FREE_AI_ENABLED:process.env.FREE_AI_ENABLED=previous;key===undefined?delete process.env.GROQ_API_KEY:process.env.GROQ_API_KEY=key;}
+});
