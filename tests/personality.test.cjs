@@ -80,6 +80,16 @@ test('resposta com valor inventado cai no texto determinístico',async()=>{
  }finally{old.enabled===undefined?delete process.env.FREE_AI_ENABLED:process.env.FREE_AI_ENABLED=old.enabled;old.key===undefined?delete process.env.GROQ_API_KEY:process.env.GROQ_API_KEY=old.key;}
 });
 
+test('modo Direto rejeita resposta longa do provedor',async()=>{
+ const old={enabled:process.env.FREE_AI_ENABLED,key:process.env.GROQ_API_KEY};process.env.FREE_AI_ENABLED='true';process.env.GROQ_API_KEY='test';
+ try{
+  const verbose='Primeira explicação extensa. Segunda explicação extensa. Terceira explicação extensa. Quarta explicação que não deveria aparecer no modo direto.';
+  const request=async()=>new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:verbose}}]}));
+  const r=await freeConversation('Quero gastar 50',demoSnapshot('2026-09-11'),[],request,pref('direct'));
+  assert.notEqual(r.reply,verbose);assert.match(r.reply,/Esse gasto cabe|evitaria/i);assert.equal(r.assessment.amountCents,5000);
+ }finally{old.enabled===undefined?delete process.env.FREE_AI_ENABLED:process.env.FREE_AI_ENABLED=old.enabled;old.key===undefined?delete process.env.GROQ_API_KEY:process.env.GROQ_API_KEY=old.key;}
+});
+
 test('banco e API isolam preferências pelo usuário autenticado',()=>{
  const sql=fs.readFileSync(path.join(root,'supabase/migrations/20260914_assistant_personality.sql'),'utf8');
  const cloud=fs.readFileSync(path.join(root,'apps/web/lib/cloud.ts'),'utf8');

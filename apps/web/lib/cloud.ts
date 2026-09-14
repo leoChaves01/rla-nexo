@@ -19,7 +19,7 @@ export async function authenticatedClient(token:string){
 }
 export class CloudRepository {
  readonly storage='supabase';
- constructor(private client:SupabaseClient){}
+ constructor(private client:SupabaseClient,private token=''){}
  async read(){const {data,error}=await this.client.rpc('nexo_read',{initial_snapshot:emptySnapshot()});if(error)throw new ServiceUnavailableException('Não foi possível carregar seus dados. Confira a configuração do banco.');return {snapshot:SnapshotSchema.parse(data.snapshot),revision:data.revision,consent:'revoked'};}
  async update(revision:number,change:(s:Snapshot)=>Snapshot){
   const current=await this.read();if(current.revision!==revision)throw new ConflictException('Seus dados mudaram em outra tela. Recarregue antes de salvar.');
@@ -32,6 +32,8 @@ export class CloudRepository {
  async history(){const {data,error}=await this.client.from('nexo_messages').select('role,text,created_at').order('id',{ascending:false}).limit(100);if(error)throw new ServiceUnavailableException('Não foi possível carregar a conversa.');return (data||[]).reverse().map(m=>({role:m.role,text:m.text,date:m.created_at}));}
  async remember(message:string,reply:string){const {error}=await this.client.rpc('nexo_remember',{user_text:message,assistant_text:reply});if(error)throw new ServiceUnavailableException('Não foi possível salvar a conversa.');}
  async allowChat(){const {data,error}=await this.client.rpc('nexo_chat_allow');return !error&&data===true;}
- async preferences():Promise<AssistantPreferences>{const {data,error}=await this.client.rpc('nexo_preferences_read');if(error&&['PGRST202','42883'].includes(error.code||''))return DEFAULT_PREFERENCES;if(error)throw new ServiceUnavailableException('Não foi possível carregar a personalização.');return data?normalizePreferences({nexoPersonality:data.nexo_personality,responseLength:data.response_length,useEmojis:data.use_emojis}):DEFAULT_PREFERENCES;}
- async savePreferences(value:AssistantPreferences){const {error}=await this.client.rpc('nexo_preferences_save',{personality:value.nexoPersonality,response_length:value.responseLength,use_emojis:value.useEmojis});if(error)throw new ServiceUnavailableException('Não foi possível salvar a personalização.');return value;}
+ private async profilePreferences(){if(!this.token)return DEFAULT_PREFERENCES;const {data}=await this.client.auth.getUser(this.token);return normalizePreferences(data.user?.user_metadata?.nexo_preferences);}
+ private async saveProfilePreferences(value:AssistantPreferences){if(!this.token)return false;const c=publicConfig(),response=await fetch(c.url+'/auth/v1/user',{method:'PUT',headers:{Authorization:'Bearer '+this.token,apikey:c.key,'Content-Type':'application/json'},body:JSON.stringify({data:{nexo_preferences:value}})});return response.ok;}
+ async preferences():Promise<AssistantPreferences>{const {data,error}=await this.client.rpc('nexo_preferences_read');if(error&&['PGRST202','42883'].includes(error.code||''))return this.profilePreferences();if(error)throw new ServiceUnavailableException('Não foi possível carregar a personalização.');if(data?.exists===false)return this.profilePreferences();return data?normalizePreferences({nexoPersonality:data.nexo_personality,responseLength:data.response_length,useEmojis:data.use_emojis}):this.profilePreferences();}
+ async savePreferences(value:AssistantPreferences){const {error}=await this.client.rpc('nexo_preferences_save',{personality:value.nexoPersonality,response_length:value.responseLength,use_emojis:value.useEmojis});const missing=error&&['PGRST202','42883'].includes(error.code||'');if(error&&!missing)throw new ServiceUnavailableException('Não foi possível salvar a personalização.');const profileSaved=await this.saveProfilePreferences(value);if(missing&&!profileSaved)throw new ServiceUnavailableException('Não foi possível salvar a personalização.');return value;}
 }

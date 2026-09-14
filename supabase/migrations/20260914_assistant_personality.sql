@@ -24,9 +24,9 @@ language plpgsql security invoker set search_path='' as $$
 declare result jsonb;
 begin
  if auth.uid() is null then raise exception 'Unauthorized' using errcode='42501'; end if;
- select jsonb_build_object('nexo_personality',p.nexo_personality,'response_length',p.response_length,'use_emojis',p.use_emojis)
+ select jsonb_build_object('exists',true,'nexo_personality',p.nexo_personality,'response_length',p.response_length,'use_emojis',p.use_emojis)
  into result from public.user_preferences p where p.user_id=auth.uid();
- return coalesce(result,jsonb_build_object('nexo_personality','friendly','response_length','standard','use_emojis',false));
+ return coalesce(result,jsonb_build_object('exists',false,'nexo_personality','friendly','response_length','standard','use_emojis',false));
 end;$$;
 
 create or replace function public.nexo_preferences_save(personality text,response_length text,use_emojis boolean) returns void

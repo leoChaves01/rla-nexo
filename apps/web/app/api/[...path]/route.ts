@@ -15,7 +15,7 @@ async function proxy(req:NextRequest,context:{params:Promise<{path:string[]}>}){
     const token=req.headers.get('authorization')?.match(/^Bearer (.+)$/)?.[1];
     if(!token)return json({message:'Entre na sua conta para continuar.'},401);
     const client=await authenticatedClient(token);if(!client)return json({message:'Sua sessão terminou. Entre novamente.'},401);
-    const repo=new CloudRepository(client),finance=new FinanceCore(repo,true);
+    const repo=new CloudRepository(client,token),finance=new FinanceCore(repo,true);
     let body:any;
     if(req.method==='POST'){const text=await req.text();if(Buffer.byteLength(text)>2000000)return json({message:'Arquivo muito grande. Limite: 2 MB.'},413);try{body=JSON.parse(text);}catch{return json({message:'Pedido inválido.'},400);}}
     if(req.method==='GET'){
